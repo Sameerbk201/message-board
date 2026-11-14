@@ -1,0 +1,40 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+
+    "rootDir": "src",
+    "outDir": "dist",
+
+    "types": ["node"],
+
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    "noEmit": false,
+    "tsBuildInfoFile": ".cache/.tsconfig.build.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/modules/**/documentation/*.openapi.json",
+    "src/modules/**/adapters/inbound/http/openapi/*.openapi.json"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/scripts/**",
+    "src/cli/**",
+    "src/tests/**",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/tests/**",
+    "src/**/smoke-tests/**",
+
+    "src/**/*.txt",
+    "src/**/*.og",
+    "src/**/*.rest",
+    "src/**/*.md"
+  ]
+}

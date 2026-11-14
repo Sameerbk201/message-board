@@ -1,0 +1,89 @@
+{
+  "rest-client.environmentVariables": {
+    "local": {
+      "baseurl": "http://localhost:8009"
+    },
+    "dev": {
+      "baseurl": "https://dev.example.com"
+    },
+    "prod": {
+      "baseurl": "https://api.example.com"
+    }
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact",
+    "json",
+    "jsonc",
+    "yaml",
+    "yml"
+  ],
+  "eslint.useFlatConfig": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.insertSpaces": true,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "eslint.format.enable": true,
+  "editor.codeActionsOnSave": {
+    // "source.fixAll": "always",
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.associations": {
+    "*.test.ts": "typescript",
+    "*.spec.ts": "typescript"
+  },
+  "files.eol": "\n",
+  // "files.exclude": { "dist": true },
+  "search.exclude": { "dist": true },
+  /*
+   * Use the project's installed TypeScript SDK.
+   *
+   * Replaces the deprecated:
+   * "typescript.tsdk": "node_modules/typescript/lib"
+   */
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+
+  /*
+   * Auto-import suggestions.
+   *
+   * Index dependencies declared in package.json and prefer type-only imports
+   * for interfaces and type aliases.
+   */
+  "js/ts.suggest.autoImports": true,
+  "js/ts.preferences.includePackageJsonAutoImports": "on",
+  "js/ts.preferences.preferTypeOnlyAutoImports": true,
+
+  /*
+   * Auto-import behavior for both JavaScript and TypeScript.
+   *
+   * Prefer:
+   *
+   *   import { Foo } from "./foo.js";
+   *
+   * instead of:
+   *
+   *   import { Foo } from "@/foo";
+   *   import { Foo } from "src/foo";
+   */
+  "js/ts.preferences.importModuleSpecifier": "relative",
+
+  /*
+   * Include the `.js` extension when VS Code generates imports.
+   *
+   * This is particularly useful when using TypeScript with
+   * Node.js ESM / NodeNext.
+   *
+   * Example:
+   *
+   *   import { CidrValueObject } from "./cidr.value.object.js";
+   */
+  "js/ts.preferences.importModuleSpecifierEnding": "js",
+
+  /*
+   * MongoDB VS Code extension.
+   */
+  "mdb.confirmRunAll": false
+}

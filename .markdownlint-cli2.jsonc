@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/markdownlint-cli2/schema/markdownlint-cli2-config-schema.json",
+  "config": {
+    "default": true,
+    "MD013": {
+      "line_length": 120,
+      "headings": false,
+      "code_blocks": false,
+      "tables": false,
+    },
+    "MD024": {
+      "siblings_only": true,
+    },
+    "MD060": false,
+  },
+  "globs": ["**/*.md"],
+  "ignores": [
+    "archive/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/.cache/**",
+    "**/.git/**",
+  ],
+}
