@@ -50,7 +50,6 @@ The image build compiles the app; it does not run the integration tests.
 docker run -d \
   --name message-board \
   --network host \
-  --mount type=volume,source=message-board-tls,target=/app/tls \
   message-board
 ```
 
@@ -64,9 +63,8 @@ Open `https://localhost:8887/api/message-board` on the server, or
 Use the Wi-Fi or Ethernet IPv4 address shown in the logs. HTTPS and WSS share the same port.
 The self-signed certificate still requires explicit browser trust or acceptance.
 
-The named [Docker volume](https://docs.docker.com/engine/storage/volumes/) retains the files under
-`/app/tls` when the container is removed and recreated. Docker creates the named volume if it is absent.
-It stores the TLS key and certificate; the app does not save message history.
+The app automatically generates `/app/tls/server.key` and `/app/tls/server.crt` before opening the listener.
+You do not need to create certificates, supply TLS files, or mount a directory to run it.
 
 This run command targets Docker Engine on Linux. Docker Desktop has separate host-networking requirements;
 see the linked Docker documentation before using it on another platform.
@@ -110,19 +108,44 @@ docker stop message-board
 docker rm message-board
 ```
 
-Repeat the [run command](#run-on-your-linux-network) with the same `message-board-tls` volume.
-The new container uses the rebuilt image and reuses the existing certificate pair.
+Repeat the [run command](#run-on-your-linux-network). The new container uses the rebuilt image and
+automatically generates a new certificate pair. Use the optional volume below to retain the same pair
+across container replacements.
 
 ## TLS certificate lifetime
 
-On first startup, OpenSSL generates `/app/tls/server.key` and `/app/tls/server.crt`.
-The image prepares that directory for the non-root runtime user. A reused or manually supplied volume
-must remain writable by that user, and its private key must be readable by it.
+On first startup, OpenSSL automatically generates `/app/tls/server.key` and `/app/tls/server.crt`.
+The image prepares that directory for the non-root runtime user. No manual TLS setup is required.
 
-Certificates are reused on later starts, including container replacement with the same volume.
-They do not automatically renew or gain new IP names after a LAN address change.
+| Container action                                 | Certificate behavior                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| Start a new container without a mount            | Generate a new pair automatically.                                     |
+| Stop and start the same container                | Reuse its existing pair.                                               |
+| Remove and recreate a container without a volume | Generate a new pair automatically; the old container's files are gone. |
+| Recreate with the same optional TLS volume       | Reuse the pair from that volume.                                       |
+
+### Optional: preserve certificates
+
+When creating a container, add a named volume only if you want the same certificate to survive container
+replacement:
+
+```bash
+docker run -d \
+  --name message-board \
+  --network host \
+  --mount type=volume,source=message-board-tls,target=/app/tls \
+  message-board
+```
+
+The app still generates the pair automatically when this volume is empty.
+The named [Docker volume](https://docs.docker.com/engine/storage/volumes/) preserves it for later containers.
+It contains the TLS key and certificate; the app does not save message history.
+A reused or manually supplied volume must remain writable by the runtime user, and its private key
+must be readable by that user.
+
+Reused certificates do not automatically renew or gain new IP names after a LAN address change.
 Follow the [TLS lifecycle guide](../../src/modules/application/documentation/README.md#self-signed-tls)
-to deliberately replace the pair in `/app/tls`; clients must then trust the replacement certificate.
+to deliberately replace a reused pair in `/app/tls`; clients must then trust the replacement certificate.
 
 If using bridge networking with published ports instead of the documented Linux host mode, generated
 names reflect container interfaces. Supply a certificate pair containing the external host IP or DNS name
