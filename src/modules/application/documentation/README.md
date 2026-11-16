@@ -2,7 +2,7 @@
 
 **Documentation version:** 1.0.0  
 **Status:** Implemented for local development  
-**Last updated:** 2026-11-14
+**Last updated:** 2026-11-16
 
 [Documentation index](../../../../README.md)
 
@@ -36,15 +36,20 @@ The application module currently contains the self-signed TLS helper and its int
 
 ## HTTP and WebSocket endpoints
 
-| Protocol / request                       | Path                 | Result                                                   |
-| ---------------------------------------- | -------------------- | -------------------------------------------------------- |
-| HTTPS GET                                | `/api/message-board` | Serve the HTML interface with `Cache-Control: no-store`. |
-| WSS upgrade                              | `/api/message-board` | Open a native WebSocket on the same listener.            |
-| Other HTTP paths and unsupported methods | Any                  | `404` with the text `404 not found`.                     |
-| WSS upgrade on another path              | Any other path       | Reject the upgrade.                                      |
+| Protocol / request                       | Path                       | Result                                                   |
+| ---------------------------------------- | -------------------------- | -------------------------------------------------------- |
+| HTTPS GET                                | `/api/message-board`       | Serve the HTML interface with `Cache-Control: no-store`. |
+| WSS upgrade                              | `/api/message-board`       | Open a native WebSocket on the same listener.            |
+| WSS upgrade                              | `/api/message-board/files` | Relay files to connected file clients.                   |
+| Other HTTP paths and unsupported methods | Any                        | `404` with the text `404 not found`.                     |
+| WSS upgrade on another path              | Any other path             | Reject the upgrade.                                      |
 
 The `/api/message-board` HTTP response is HTML. Messages are plain text WebSocket frames;
 there is no HTTP POST message API. Express disables the `X-Powered-By` header.
+
+File frames contain a two-byte big-endian UTF-8 filename length, the filename, and file bytes.
+The file limit is 10 MiB, with up to 255 filename bytes. The server relays files without storing
+them and disconnects a recipient whose outgoing buffer exceeds two maximum-sized frames.
 
 The listener binds all IPv4 interfaces using `0.0.0.0`. It uses the supplied `port`, then the `PORT`
 environment variable, then `8887`. Invalid ports fail before listener creation.
@@ -79,7 +84,8 @@ The WebSocket transport closes oversized incoming messages with code `1009`.
 ## Self-signed TLS
 
 `ensureSelfSignedTls(directory?)` returns `{ key: Buffer, cert: Buffer }`.
-Its default directory resolves to repository-root `tls/` in both source and compiled layouts.
+Its default directory resolves to repository-root `tls/` in source and compiled layouts. The
+single executable uses `~/.message-board/tls/` so the certificate persists outside the executable.
 
 | Existing files                          | Behavior                                |
 | --------------------------------------- | --------------------------------------- |
@@ -126,10 +132,10 @@ Despite its field name, `httpServer` is a Node **HTTPS** server.
 Importing `server.ts` does not start a listener; direct execution starts it and registers
 `SIGINT` and `SIGTERM` handlers.
 
-`stop()` terminates active WebSockets, closes both servers, and returns a shared promise on repeated
+`stop()` terminates active WebSockets, closes both WebSocket servers and HTTPS, and returns a shared promise on repeated
 calls. Termination ends browser connections and clears their UI messages; shutdown does not drain
 application messages or wait for recipient acknowledgements.
-If listening fails, the new WebSocket server is closed before the error propagates.
+If listening fails, both WebSocket servers are closed before the error propagates.
 
 ## Logging and failure behavior
 

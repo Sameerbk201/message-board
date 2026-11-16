@@ -1,0 +1,9 @@
+{
+  "main": "dist/server.bundle.cjs",
+  "output": "dist/sea-prep.blob",
+  "assets": {
+    "message-board.html": "message-board.html"
+  },
+  "useSnapshot": false,
+  "useCodeCache": false
+}

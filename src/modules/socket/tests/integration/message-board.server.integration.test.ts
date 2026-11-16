@@ -60,6 +60,7 @@ describe('Message Board server', () => {
     const page = response.text;
     expect(page).toContain('<title>Message Board</title>');
     expect(page).toContain('id="message-form"');
+    expect(page).toContain('id="send-files"');
     expect(page).toContain('role="log"');
   });
 
@@ -93,6 +94,51 @@ describe('Message Board server', () => {
     const [receiverData] = await receiverMessage;
     expect(senderData).toEqual(Buffer.from(message));
     expect(receiverData).toEqual(Buffer.from(message));
+  });
+
+  it('relays binary files to file clients without mixing them with text messages', async () => {
+    const sender = await connectClient(socketUrl + '/files');
+    const receiver = await connectClient(socketUrl + '/files');
+    const textClient = await connectClient();
+    const textMessages: unknown[] = [];
+    textClient.on('message', (data) => textMessages.push(data));
+    const received = once(receiver, 'message');
+    const echoed = once(sender, 'message');
+    const file = Buffer.concat([
+      Buffer.from([0, 8]),
+      Buffer.from('test.zip'),
+      Buffer.from([0, 255, 1]),
+    ]);
+
+    sender.send(file);
+
+    expect((await received)[0]).toEqual(file);
+    expect((await echoed)[0]).toEqual(file);
+    expect(textMessages).toEqual([]);
+  });
+
+  it('rejects malformed file frames and oversized files', async () => {
+    const malformed = await connectClient(socketUrl + '/files');
+    const malformedClose = once(malformed, 'close');
+    malformed.send(Buffer.from([0, 4, 65]));
+    expect((await malformedClose)[0]).toBe(1008);
+
+    const oversized = await connectClient(socketUrl + '/files');
+    const oversizedClose = once(oversized, 'close');
+    oversized.send(Buffer.alloc(10 * 1024 * 1024 + 258));
+    expect((await oversizedClose)[0]).toBe(1009);
+  });
+
+  it('accepts a 10 MiB file and rejects a larger file even with a short name', async () => {
+    const client = await connectClient(socketUrl + '/files');
+    const received = once(client, 'message');
+    const header = Buffer.from([0, 1, 65]);
+    client.send(Buffer.concat([header, Buffer.alloc(10 * 1024 * 1024)]));
+    expect(((await received)[0] as Buffer).length).toBe(10 * 1024 * 1024 + header.length);
+
+    const closed = once(client, 'close');
+    client.send(Buffer.concat([header, Buffer.alloc(10 * 1024 * 1024 + 1)]));
+    expect((await closed)[0]).toBe(1008);
   });
 
   it('starts newly connected clients without replaying previous messages', async () => {
@@ -173,9 +219,12 @@ describe('Message Board server', () => {
   it('stops both servers and permits repeated shutdown calls', async () => {
     const client = await connectClient();
     const closed = once(client, 'close');
+    const fileClient = await connectClient(socketUrl + '/files');
+    const fileClosed = once(fileClient, 'close');
 
     await instance.stop();
     await closed;
+    await fileClosed;
 
     expect(instance.httpServer.listening).toBe(false);
     await expect(instance.stop()).resolves.toBeUndefined();

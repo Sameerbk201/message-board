@@ -1,9 +1,12 @@
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { getAsset, isSea } from 'node:sea';
 
 import express from 'express';
 import type { Express } from 'express';
 
-export const clientPath = fileURLToPath(new URL('../message-board.html', import.meta.url));
+import { PROJECT_ROOT } from './project.root.js';
+
+export const clientPath = join(PROJECT_ROOT, 'message-board.html');
 
 /** Build the HTTP application without opening a listening port. */
 export function createApp(): Express {
@@ -12,7 +15,11 @@ export function createApp(): Express {
 
   app.get('/api/message-board', (_req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.sendFile(clientPath);
+    if (isSea()) {
+      res.type('html').send(getAsset('message-board.html', 'utf8'));
+    } else {
+      res.sendFile(clientPath);
+    }
   });
 
   app.use((_req, res) => {

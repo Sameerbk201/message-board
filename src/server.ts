@@ -1,10 +1,11 @@
 import { createServer } from 'node:https';
 import type { Server as HttpsServer } from 'node:https';
 import { networkInterfaces } from 'node:os';
+import { isSea } from 'node:sea';
 import { pathToFileURL } from 'node:url';
 
 import pino from 'pino';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 
 import { createApp } from './app.js';
 import { ensureSelfSignedTls } from './modules/application/infra/configs/self-signed.tls.js';
@@ -34,9 +35,55 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
   const httpServer = createServer(await ensureSelfSignedTls(), createApp());
   const wsServer = new WebSocketServer({
-    server: httpServer,
-    path: '/api/message-board',
+    noServer: true,
     maxPayload: 64 * 1024,
+  });
+  const maxFileBytes = 10 * 1024 * 1024;
+  const fileServer = new WebSocketServer({ noServer: true, maxPayload: maxFileBytes + 257 });
+
+  httpServer.on('upgrade', (request, socket, head) => {
+    const path = request.url?.split('?')[0];
+    let target: WebSocketServer | undefined;
+    if (path === '/api/message-board') target = wsServer;
+    if (path === '/api/message-board/files') target = fileServer;
+    if (!target) {
+      socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      return;
+    }
+    target.handleUpgrade(request, socket, head, (client) => {
+      target.emit('connection', client, request);
+    });
+  });
+
+  fileServer.on('connection', (client) => {
+    client.on('error', (error) => {
+      logger.error({ err: error }, 'File WebSocket error');
+    });
+    client.on('message', (data, isBinary) => {
+      if (!isBinary || !Buffer.isBuffer(data) || data.length < 3) {
+        client.close(1008, 'Invalid file');
+        return;
+      }
+      const nameLength = data.readUInt16BE(0);
+      const fileSize = data.length - 2 - nameLength;
+      if (nameLength === 0 || nameLength > 255 || fileSize < 0 || fileSize > maxFileBytes) {
+        client.close(1008, 'Invalid file');
+        return;
+      }
+      for (const recipient of fileServer.clients) {
+        if (recipient.readyState !== WebSocket.OPEN) continue;
+        if (recipient.bufferedAmount + data.length > 2 * (maxFileBytes + 257)) {
+          recipient.terminate();
+          continue;
+        }
+        recipient.send(data, { binary: true }, (error) => {
+          if (error) logger.error({ err: error }, 'File delivery failed');
+        });
+      }
+    });
+  });
+  fileServer.on('error', (error) => {
+    logger.error({ err: error }, 'File WebSocket server error');
   });
   const socketToolkit = createSocketToolkit({ server: wsServer });
 
@@ -75,11 +122,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
       httpServer.listen(port, '0.0.0.0');
     });
   } catch (error) {
-    await new Promise<void>((resolve) => {
-      wsServer.close(() => {
-        resolve();
-      });
-    });
+    await Promise.all(
+      [wsServer, fileServer].map(
+        (server) =>
+          new Promise<void>((resolve) => {
+            server.close(() => {
+              resolve();
+            });
+          })
+      )
+    );
     throw error;
   }
 
@@ -110,13 +162,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
   let shutdown: Promise<void> | undefined;
   const stop = (): Promise<void> => {
     if (!shutdown) {
-      for (const client of wsServer.clients) {
-        client.terminate();
+      for (const server of [wsServer, fileServer]) {
+        for (const client of server.clients) client.terminate();
       }
 
       shutdown = Promise.all([
         new Promise<void>((resolve, reject) => {
           wsServer.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        }),
+        new Promise<void>((resolve, reject) => {
+          fileServer.close((error) => {
             if (error) {
               reject(error);
               return;
@@ -143,7 +204,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 }
 
 const entrypoint = process.argv[1];
-if (entrypoint !== undefined && import.meta.url === pathToFileURL(entrypoint).href) {
+if (isSea() || (entrypoint !== undefined && import.meta.url === pathToFileURL(entrypoint).href)) {
   void startServer().then(
     (instance) => {
       const shutdown = (): void => {

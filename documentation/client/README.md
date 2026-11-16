@@ -2,7 +2,7 @@
 
 **Documentation version:** 1.0.0  
 **Status:** Implemented  
-**Last updated:** 2026-11-14
+**Last updated:** 2026-11-16
 
 [Documentation index](../../README.md)
 
@@ -14,6 +14,7 @@ Its HTML, CSS, and browser JavaScript need no frontend build or external UI libr
 - [Open and connect](#open-and-connect)
 - [Send long messages](#send-long-messages)
 - [Copy a message](#copy-a-message)
+- [Share files](#share-files)
 - [Message lifetime](#message-lifetime)
 - [Browser connection example](#browser-connection-example)
 - [Verification](#verification)
@@ -37,6 +38,9 @@ Serve the file through Express so it has the correct server origin.
 The status shows Connecting, Connected, or Disconnected. Sending is enabled only while connected.
 Choose Disconnect to leave, or Connect to create a fresh connection after leaving or losing it.
 The client does not automatically retry a failed connection.
+
+The page also opens `/api/message-board/files` for file sharing after the text connection opens.
+If the file connection fails, disconnect and reconnect to try again.
 
 ## Send long messages
 
@@ -84,6 +88,17 @@ it does not write them to localStorage, sessionStorage, IndexedDB, or a database
 This is temporary application storage, not a guarantee that recipients cannot copy or capture messages.
 A long session can accumulate messages in browser memory until its connection ends.
 
+## Share files
+
+Choose files or drag and drop them into the shared files area, then select **Send files**.
+Each file can be up to 10 MiB;
+its UTF-8 filename can be up to 255 bytes. Connected browsers receive the file immediately and
+show a Download button. A browser holds at most 100 files or 50 MiB in the current session.
+
+The file server relays the bytes without saving them. Only browsers connected at the time receive
+the file; there is no replay. Disconnecting or closing the page clears the list and releases the
+browser's temporary file URLs. A file downloaded by a recipient remains on their device.
+
 ## Browser connection example
 
 From JavaScript running on the served page's origin:
@@ -110,9 +125,9 @@ Client code that opens its own socket also owns closing it when finished.
 ## Verification
 
 The committed [server tests](../../src/modules/socket/tests/integration/message-board.server.integration.test.ts)
-cover serving the HTML, WSS broadcasts, message boundaries, and no history replay.
+cover serving the HTML, WSS broadcasts, file relay, message boundaries, and no history replay.
 
-Browser checks for the current UI were executed separately in real Chrome: two-tab messaging,
+Earlier browser checks were executed separately in real Chrome: two-tab messaging,
 literal markup rendering, disconnect/reconnect and refresh behavior, mobile layout, long multiline Unicode
 messages, exact clipboard contents, over-limit drafts, and manual-copy fallback after clipboard denial.
 There is no committed automated browser-test runner; the integration suite does not exercise clipboard APIs.

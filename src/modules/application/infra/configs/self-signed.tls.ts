@@ -1,17 +1,19 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { chmod, link, mkdir, mkdtemp, readFile, rm, unlink } from 'node:fs/promises';
-import { networkInterfaces } from 'node:os';
+import { homedir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
+import { isSea } from 'node:sea';
 import { createSecureContext } from 'node:tls';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+
+import { PROJECT_ROOT } from '../../../../project.root.js';
 
 const runOpenSsl = promisify(execFile);
 
-export const SELF_SIGNED_TLS_DIRECTORY = fileURLToPath(
-  new URL('../../../../../tls/', import.meta.url)
-);
+export const SELF_SIGNED_TLS_DIRECTORY = isSea()
+  ? join(homedir(), '.message-board', 'tls')
+  : join(PROJECT_ROOT, 'tls');
 
 /** Create a development certificate once; never replace an existing key pair. */
 export async function ensureSelfSignedTls(

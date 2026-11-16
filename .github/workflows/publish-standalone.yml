@@ -1,0 +1,120 @@
+name: Publish standalone Message Board
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package ${{ matrix.runtime }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            runtime: windows-x64
+            built: message-board-windows-x64.exe
+            executable: message-board.exe
+          - os: ubuntu-24.04
+            runtime: linux-x64
+            built: message-board-linux-x64
+            executable: message-board
+          - os: macos-15
+            runtime: macos-arm64
+            built: message-board-macos-arm64
+            executable: message-board
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          GITHUB_TOKEN: unused
+
+      - name: Use OpenSSL 3 on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo "$(brew --prefix openssl@3)/bin" >> "$GITHUB_PATH"
+
+      - name: Check OpenSSL
+        run: openssl version
+
+      - name: Build executable
+        run: npm run build:sea
+
+      - name: Prepare archive contents
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/package" -Force | Out-Null
+          Copy-Item 'dist/${{ matrix.built }}' "$env:RUNNER_TEMP/package/${{ matrix.executable }}"
+          Copy-Item 'documentation/releases/README.txt' "$env:RUNNER_TEMP/package/README.txt"
+
+      - name: Package Windows ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "$env:RUNNER_TEMP/package/*" -DestinationPath "$env:RUNNER_TEMP/message-board-${{ matrix.runtime }}.zip"
+
+      - name: Package Unix ZIP
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: ${{ runner.temp }}/package
+        run: |
+          chmod +x message-board
+          zip -qr "$RUNNER_TEMP/message-board-${{ matrix.runtime }}.zip" .
+
+      - name: Extract Windows ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Expand-Archive "$env:RUNNER_TEMP/message-board-${{ matrix.runtime }}.zip" -DestinationPath "$env:RUNNER_TEMP/extracted"
+
+      - name: Extract Unix ZIP
+        if: runner.os != 'Windows'
+        shell: bash
+        run: unzip -q "$RUNNER_TEMP/message-board-${{ matrix.runtime }}.zip" -d "$RUNNER_TEMP/extracted"
+
+      - name: Test extracted executable
+        shell: pwsh
+        run: |
+          node --import tsx scripts/smoke.sea.ts "$env:RUNNER_TEMP/extracted/${{ matrix.executable }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-${{ matrix.runtime }}
+          path: ${{ runner.temp }}/message-board-${{ matrix.runtime }}.zip
+          if-no-files-found: error
+
+  attach:
+    name: Attach release ZIPs
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: standalone-*
+          path: release
+          merge-multiple: true
+
+      - name: Upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $assets = @(Get-ChildItem release -Filter '*.zip' | ForEach-Object { $_.FullName })
+          if ($assets.Count -ne 3) { throw 'Expected three standalone ZIPs.' }
+          gh release upload "$env:RELEASE_TAG" @assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

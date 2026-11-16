@@ -49,6 +49,29 @@ npm start
 Keep `message-board.html` beside the `dist/` directory. TypeScript compilation produces the JavaScript;
 the app still serves the HTML file from the repository root.
 
+To compile with TypeScript and then bundle the server and its dependencies into one CommonJS file:
+
+```bash
+npm run build:bundle
+node dist/server.bundle.cjs
+```
+
+The bundle still needs Node.js, OpenSSL, and `message-board.html` beside the `dist/` directory.
+It creates or reuses `tls/` in that same parent directory. This command does not create a SEA executable.
+
+To build and run the macOS Apple Silicon single executable, use Node.js 24:
+
+```bash
+npm run build:sea:mac
+./dist/message-board-macos-arm64
+```
+
+The executable embeds the HTML and Node.js runtime. It requires OpenSSL on `PATH` and stores its
+certificate and private key in `~/.message-board/tls/`. The local build is ad hoc signed, not
+notarized for distribution; a browser must trust the self-signed certificate. This command builds
+only for the current macOS machine. For the native cross-platform build and release flow, see
+the [standalone release guide](../releases/README.md).
+
 ## Connect from the LAN
 
 Startup logs include `Message board IPv4 address` entries with complete URLs.
@@ -83,18 +106,20 @@ PORT=9999 npm run dev
 The application does not load a `.env` file at runtime. Export variables in the shell or provide them
 through the process environment. The integration-test configuration separately supports dotenv files.
 
-| Command                    | Purpose                                    |
-| -------------------------- | ------------------------------------------ |
-| `npm run dev`              | Watch and run `src/server.ts` with tsx.    |
-| `npm run build`            | Clean `dist/` and compile with TypeScript. |
-| `npm start`                | Run `dist/server.js`.                      |
-| `npm run typecheck`        | Check application TypeScript.              |
-| `npm run typecheck:tests`  | Check test TypeScript.                     |
-| `npm run lint`             | Lint application source.                   |
-| `npm run lint:markdown`    | Lint repository Markdown.                  |
-| `npm run test:integration` | Run the implemented integration suites.    |
+| Command                    | Purpose                                                          |
+| -------------------------- | ---------------------------------------------------------------- |
+| `npm run dev`              | Watch and run `src/server.ts` with tsx.                          |
+| `npm run build`            | Clean `dist/` and compile with TypeScript.                       |
+| `npm run build:bundle`     | Compile with TypeScript, then bundle the server with esbuild.    |
+| `npm run build:sea:mac`    | Build the macOS Apple Silicon single executable with Node.js 24. |
+| `npm start`                | Run `dist/server.js`.                                            |
+| `npm run typecheck`        | Check application TypeScript.                                    |
+| `npm run typecheck:tests`  | Check test TypeScript.                                           |
+| `npm run lint`             | Lint application source.                                         |
+| `npm run lint:markdown`    | Lint repository Markdown.                                        |
+| `npm run test:integration` | Run the implemented integration suites.                          |
 
-Copied commands for seeding, infrastructure setup, releases, licenses, and esbuild reference files
+Copied commands for seeding, infrastructure setup, releases, licenses, and `build:es` reference files
 that this app does not contain. Use the commands above for the current implementation.
 
 ## Run the integration tests

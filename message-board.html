@@ -323,6 +323,109 @@
         text-align: center;
         line-height: 1.6;
       }
+      .files-card {
+        margin-top: 18px;
+        padding: 24px;
+        border: 1px solid #dfe5da;
+        border-radius: 24px;
+        background: #fffefa;
+        box-shadow: 0 12px 40px #24363008;
+      }
+      .files-heading h2 {
+        margin: 0;
+        font-size: 19px;
+        letter-spacing: -0.025em;
+      }
+      .files-heading p,
+      .files-empty,
+      .file-detail {
+        color: #687365;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .files-heading p {
+        margin: 6px 0 0;
+      }
+      .drop-zone {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 18px;
+        padding: 20px;
+        border: 1px dashed #91ad99;
+        border-radius: 16px;
+        background: #f6f9f2;
+      }
+      .drop-zone[data-dragging='true'] {
+        border-color: #215c49;
+        background: #e8f3eb;
+      }
+      .drop-zone strong {
+        display: block;
+        font-size: 14px;
+      }
+      .drop-zone p {
+        margin: 5px 0 0;
+        color: #687365;
+        font-size: 12px;
+      }
+      .file-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .selected-files {
+        margin: 12px 0 0;
+        color: #486052;
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+      }
+      .files-empty {
+        margin: 18px 0 0;
+      }
+      .file-notice {
+        margin: 14px 0 0;
+      }
+      .file-list {
+        list-style: none;
+        margin: 16px 0 0;
+        padding: 0;
+      }
+      .file-list:empty {
+        display: none;
+      }
+      .file-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 0;
+        border-bottom: 1px solid #edf0e8;
+      }
+      .file-item:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+      .file-name {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .file-detail {
+        display: block;
+        margin-top: 3px;
+      }
+      .download-file {
+        flex-shrink: 0;
+        text-decoration: none;
+      }
+      .download-file:focus-visible {
+        outline: 3px solid #317a5b;
+        outline-offset: 4px;
+      }
       @media (max-width: 600px) {
         body {
           padding: 22px 12px;
@@ -369,6 +472,14 @@
         .notice {
           margin-inline: 16px;
         }
+        .files-card {
+          padding: 18px 16px;
+          border-radius: 20px;
+        }
+        .drop-zone {
+          align-items: flex-start;
+          flex-direction: column;
+        }
       }
     </style>
   </head>
@@ -395,7 +506,7 @@
           </div>
           <div>
             <h1>Message Board</h1>
-            <p class="subtitle">Share a message with everyone connected.</p>
+            <p class="subtitle">Share messages and files with everyone connected.</p>
           </div>
         </div>
         <span class="session-tag">Live session · no history</span>
@@ -485,7 +596,34 @@
           </p>
         </form>
       </section>
-      <p class="page-footer">A shared space for right now. Messages clear when you disconnect.</p>
+      <section class="files-card" aria-labelledby="files-title">
+        <div class="files-heading">
+          <h2 id="files-title">Shared files</h2>
+          <p>Files are available to people connected when you share them.</p>
+        </div>
+        <div id="drop-zone" class="drop-zone">
+          <div>
+            <strong>Drop files here</strong>
+            <p>ZIP, PDF, images, and more · up to 10 MiB per file</p>
+          </div>
+          <div class="file-actions">
+            <button id="choose-files" class="connection-button" type="button" disabled>
+              Choose files
+            </button>
+            <button id="send-files" class="send-button" type="button" disabled>Send files</button>
+          </div>
+          <input id="file-input" type="file" multiple hidden />
+        </div>
+        <p id="selected-files" class="selected-files" role="status" aria-live="polite">
+          No files selected.
+        </p>
+        <p id="file-notice" class="notice file-notice" role="alert" hidden></p>
+        <p id="files-empty" class="files-empty">No files shared in this session yet.</p>
+        <ul id="files" class="file-list" aria-label="Shared files" aria-live="polite"></ul>
+      </section>
+      <p class="page-footer">
+        Messages and shared files clear when you disconnect. Downloads stay on your device.
+      </p>
     </main>
 
     <script type="module">
@@ -501,9 +639,23 @@
       const send = document.getElementById('send');
       const messageSize = document.getElementById('message-size');
       const copyStatus = document.getElementById('copy-status');
+      const dropZone = document.getElementById('drop-zone');
+      const chooseFiles = document.getElementById('choose-files');
+      const sendFiles = document.getElementById('send-files');
+      const selectedFilesLabel = document.getElementById('selected-files');
+      const fileInput = document.getElementById('file-input');
+      const fileList = document.getElementById('files');
+      const filesEmpty = document.getElementById('files-empty');
+      const fileNotice = document.getElementById('file-notice');
       const encoder = new TextEncoder();
       const maxMessageBytes = 64 * 1024;
+      const maxFileBytes = 10 * 1024 * 1024;
+      const maxSessionFileBytes = 50 * 1024 * 1024;
       let socket = null;
+      let fileSocket = null;
+      let selectedFiles = [];
+      let fileBytes = 0;
+      const fileUrls = [];
 
       serverAddress.textContent = window.location.host;
 
@@ -536,6 +688,155 @@
         updateComposer();
       }
 
+      function clearFiles() {
+        for (const url of fileUrls) URL.revokeObjectURL(url);
+        fileUrls.length = 0;
+        fileBytes = 0;
+        fileList.replaceChildren();
+        filesEmpty.hidden = false;
+        fileInput.value = '';
+        selectedFiles = [];
+        updateSelectedFiles();
+        fileNotice.hidden = true;
+      }
+
+      function updateSelectedFiles() {
+        selectedFilesLabel.textContent = selectedFiles.length
+          ? 'Selected: ' + selectedFiles.map((file) => file.name).join(', ')
+          : 'No files selected.';
+        sendFiles.disabled =
+          selectedFiles.length === 0 || !fileSocket || fileSocket.readyState !== WebSocket.OPEN;
+      }
+
+      function selectFiles(files) {
+        selectedFiles = Array.from(files);
+        fileNotice.hidden = true;
+        updateSelectedFiles();
+      }
+
+      function showFileNotice(text) {
+        fileNotice.textContent = text;
+        fileNotice.hidden = false;
+      }
+
+      function closeFiles() {
+        const connection = fileSocket;
+        fileSocket = null;
+        chooseFiles.disabled = true;
+        if (connection && connection.readyState < WebSocket.CLOSING) connection.close();
+        clearFiles();
+      }
+
+      function connectFiles() {
+        const connection = new WebSocket('/api/message-board/files');
+        fileSocket = connection;
+        connection.binaryType = 'arraybuffer';
+        connection.addEventListener('open', () => {
+          if (fileSocket !== connection) return;
+          chooseFiles.disabled = false;
+          updateSelectedFiles();
+        });
+        connection.addEventListener('message', (event) => {
+          if (fileSocket !== connection || !(event.data instanceof ArrayBuffer)) return;
+          const bytes = event.data;
+          if (bytes.byteLength < 3) return;
+          const nameLength = new DataView(bytes).getUint16(0);
+          const size = bytes.byteLength - 2 - nameLength;
+          if (!nameLength || nameLength > 255 || size < 0 || size > maxFileBytes) return;
+          if (fileUrls.length >= 100 || fileBytes + size > maxSessionFileBytes) {
+            showFileNotice('File not added: this session can hold up to 100 files or 50 MiB.');
+            return;
+          }
+          const name = new TextDecoder().decode(bytes.slice(2, 2 + nameLength));
+          const url = URL.createObjectURL(new Blob([bytes.slice(2 + nameLength)]));
+          fileUrls.push(url);
+          fileBytes += size;
+          const item = document.createElement('li');
+          item.className = 'file-item';
+          const details = document.createElement('div');
+          const title = document.createElement('span');
+          title.className = 'file-name';
+          title.textContent = name;
+          const sizeLabel = document.createElement('span');
+          sizeLabel.className = 'file-detail';
+          sizeLabel.textContent = (size / 1024).toFixed(1) + ' KiB';
+          details.append(title, sizeLabel);
+          const download = document.createElement('a');
+          download.className = 'connection-button download-file';
+          download.href = url;
+          download.download = name;
+          download.textContent = 'Download';
+          download.setAttribute('aria-label', 'Download ' + name);
+          item.append(details, download);
+          fileList.append(item);
+          filesEmpty.hidden = true;
+        });
+        connection.addEventListener('close', () => {
+          if (fileSocket !== connection) return;
+          fileSocket = null;
+          chooseFiles.disabled = true;
+          clearFiles();
+          showFileNotice('File connection lost. Disconnect and reconnect to share files again.');
+        });
+      }
+
+      function shareFiles() {
+        if (!fileSocket || fileSocket.readyState !== WebSocket.OPEN) {
+          showFileNotice('Connect to share files.');
+          return;
+        }
+        fileNotice.hidden = true;
+        let sent = 0;
+        while (selectedFiles.length) {
+          const file = selectedFiles[0];
+          const name = encoder.encode(file.name);
+          if (!name.length || name.length > 255 || file.size > maxFileBytes) {
+            showFileNotice(
+              'Each file must be 10 MiB or smaller, with a name of at most 255 UTF-8 bytes.'
+            );
+            break;
+          }
+          if (fileSocket.bufferedAmount + file.size + name.length + 2 > 2 * (maxFileBytes + 257)) {
+            showFileNotice('Files are still sending. Try again in a moment.');
+            break;
+          }
+          const header = new Uint8Array(2 + name.length);
+          new DataView(header.buffer).setUint16(0, name.length);
+          header.set(name, 2);
+          try {
+            fileSocket.send(new Blob([header, file]));
+            selectedFiles.shift();
+            sent += 1;
+          } catch {
+            showFileNotice('The file could not be sent. Reconnect and try again.');
+            break;
+          }
+        }
+        updateSelectedFiles();
+        if (sent && !selectedFiles.length) {
+          selectedFilesLabel.textContent = 'Sending… Shared files appear below when received.';
+        }
+      }
+
+      chooseFiles.addEventListener('click', () => fileInput.click());
+      sendFiles.addEventListener('click', shareFiles);
+      fileInput.addEventListener('change', () => {
+        selectFiles(fileInput.files);
+        fileInput.value = '';
+      });
+      dropZone.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        dropZone.dataset.dragging = 'true';
+      });
+      dropZone.addEventListener('dragleave', (event) => {
+        if (!dropZone.contains(event.relatedTarget)) dropZone.dataset.dragging = 'false';
+      });
+      dropZone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dropZone.dataset.dragging = 'false';
+        selectFiles(event.dataTransfer.files);
+      });
+
       function showNotice(text) {
         notice.textContent = text;
         notice.hidden = false;
@@ -563,6 +864,7 @@
         connection.addEventListener('open', () => {
           if (socket !== connection) return;
           setConnectionState('connected', 'Connected');
+          connectFiles();
         });
 
         connection.addEventListener('message', (event) => {
@@ -622,6 +924,7 @@
         connection.addEventListener('close', () => {
           if (socket !== connection) return;
           socket = null;
+          closeFiles();
           clearMessages();
           setConnectionState('disconnected', 'Disconnected');
         });
@@ -629,6 +932,7 @@
 
       connectionButton.addEventListener('click', () => {
         if (socket && socket.readyState === WebSocket.OPEN) {
+          closeFiles();
           clearMessages();
           setConnectionState('disconnecting', 'Disconnecting…');
           socket.close(1000, 'Left session');
@@ -666,6 +970,7 @@
       window.addEventListener('pagehide', () => {
         socket?.close(1000, 'Page closed');
         socket = null;
+        closeFiles();
         clearMessages();
         setConnectionState('disconnected', 'Disconnected');
       });
