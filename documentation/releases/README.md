@@ -19,35 +19,143 @@ and the HTML, but requires OpenSSL 3 or newer on `PATH`. It generates or reuses 
 and certificate in `~/.message-board/tls/`; the browser must trust the certificate. The executables
 have no publisher signature. macOS uses ad hoc signing and is not notarized.
 
-## Release flow
+## Prerequisites
 
-1. Merge and review the intended code and workflows on `main`, including the desired `package.json`
-   version. Run the appropriate tests before creating a release.
-2. Create and push a reviewed version tag such as `v3.0.11`. The tag must include the release
-   workflows. The [draft workflow](../../.github/workflows/create-release-draft.yml) creates a draft
-   with generated notes; it does not publish the release.
-3. Review the draft's tag, commit, and notes in GitHub, then publish it. Publishing makes the
-   release visible before the [packaging workflow](../../.github/workflows/publish-standalone.yml)
-   finishes.
-4. Monitor the packaging run. Each platform builds on its native runner, archives and extracts the
-   ZIP, and checks HTTPS plus text and file WebSockets against the extracted executable. Only after
-   all three jobs pass does the attach job upload the three ZIPs to the release.
-5. Verify the assets and test the downloaded executable on the intended machine before distributing
-   the release. A workflow smoke test does not verify every client or network environment.
+Merge the intended changes and both workflows into `main` before releasing. Install Node.js 24, npm,
+Git, GitHub CLI (`gh`), and OpenSSL 3 or newer. Authenticate Git and `gh` with an account allowed to
+push to `main`, push tags, and publish releases. Check that GitHub Actions is enabled and that the
+repository permits the workflows to use `GITHUB_TOKEN` with `contents: write`.
+
+Both release paths create a commit and tag and push them to GitHub. Publishing the draft makes the
+release visible **before** the platform builds finish. Review the source and the draft first.
+
+## Step 1: prepare main
+
+Run from the repository root. Stop if the first status shows changes; review them before switching.
 
 ```bash
-gh run list --workflow create-release-draft.yml --limit 5
-gh run list --workflow publish-standalone.yml --limit 5
-gh release view v3.0.11
+git status --short
+git switch main
+git fetch --tags origin main
+git pull --ff-only origin main
+git status --short
+git rev-parse HEAD
+git rev-parse FETCH_HEAD
 ```
 
-Replace `v3.0.11` with the actual release tag. The workflows use the repository `GITHUB_TOKEN`; the
-draft job and attach job require `contents: write`. A tag created by a workflow using `GITHUB_TOKEN`
-does not normally trigger the draft workflow; push it with maintainer credentials or create the draft
-separately. No release, tag, signing certificate, or external secret is created by this guide.
+The final status must be empty and the two commit IDs must match. The tag must include the
+[draft workflow](../../.github/workflows/create-release-draft.yml) and
+[packaging workflow](../../.github/workflows/publish-standalone.yml).
 
-If a job fails, inspect its logs and the existing draft or release before retrying. Uploading assets
-can fail after a partial upload; the workflow does not overwrite existing release assets.
+## Step 2: create and push the release
+
+Choose **one** of the following paths. Both push the version commit and its tag atomically to `origin`.
+
+### Option A: release with the script
+
+```bash
+npm run release:message-board          # patch: 3.0.11 -> 3.0.12
+npm run release:message-board -- minor # 3.0.11 -> 3.1.0
+npm run release:message-board -- major # 3.0.11 -> 4.0.0
+```
+
+Run only one command. The script checks `main`, the clean tree, required release files, and equality
+with fetched `origin/main`. It then runs `npm ci`, all lint and type checks, the real integration tests,
+and the TypeScript/esbuild bundle. It checks the tree again before using `npm version` to update
+`package.json` and `package-lock.json`, create the version commit and `v` tag, and atomically push both.
+Patch is the default, including when there are no previous tags. It does not publish the draft or
+build all platform executables locally.
+
+### Option B: release manually
+
+First run the same release checks. OpenSSL must be on `PATH`; the integration suite opens local
+HTTPS and WebSocket listeners and may create the ignored local `tls/` certificate pair.
+
+```bash
+npm ci
+npm run lint:all
+npm run typecheck:all
+npm run test:integration
+npm run build:bundle
+git status --short
+```
+
+Stop if a command fails or the final status is not empty. Choose a new version; the example assumes
+the current version is `3.0.11` and the next release is `3.0.12`. Replace it with your chosen version:
+
+```bash
+release_version=3.0.12
+release_tag="v${release_version}"
+git tag --list "$release_tag"
+```
+
+The last command must print nothing. The earlier `git fetch --tags` makes this check include fetched
+remote tags. Update the version files, then inspect the diff before committing:
+
+```bash
+npm version "$release_version" --no-git-tag-version
+git diff -- package.json package-lock.json
+```
+
+After checking the version, create the commit and annotated tag and push both:
+
+```bash
+git add package.json package-lock.json
+git commit -m "chore(release): message board ${release_tag}"
+git tag -a "$release_tag" -m "Message Board ${release_tag}"
+git push --atomic origin main "refs/tags/${release_tag}"
+```
+
+## Step 3: review and publish the GitHub draft
+
+The tag push starts the draft workflow. Get the tag for the just-created release and find the run:
+
+```bash
+release_tag="v$(node -p "require('./package.json').version")"
+gh run list --workflow create-release-draft.yml --limit 5
+gh release view "$release_tag" --web
+```
+
+Wait for the draft workflow to finish. Review the draft tag, target commit, title, and notes in
+GitHub. When ready, publish it using the GitHub UI or this command:
+
+```bash
+gh release edit "$release_tag" --draft=false
+```
+
+The repository-provided `GITHUB_TOKEN` creates the draft and uploads assets. A tag pushed by another
+workflow using `GITHUB_TOKEN` does not normally trigger the draft workflow; push the tag using your
+maintainer Git credentials or create the draft separately.
+
+## Step 4: monitor and verify the assets
+
+Publishing the draft starts the packaging workflow. Find its run ID, then replace `RUN_ID` below:
+
+```bash
+gh run list --workflow publish-standalone.yml --limit 5
+gh run watch RUN_ID
+gh release view "$release_tag" --json assets --jq '.assets[].name'
+```
+
+Each platform builds on its native runner, archives and extracts its ZIP, and checks HTTPS plus text
+and file WebSockets. The attach job uploads the three ZIPs only after all platform jobs pass. Confirm
+the three asset names in the table above and test the downloaded executable on the intended machine.
+
+## Failure recovery
+
+- If a check fails before versioning, fix it and run the chosen release path again.
+- If versioning fails, inspect `git status`, `git log`, and `git tag` before retrying; a commit or tag
+  may already exist.
+- If the atomic push fails, inspect the local and remote state. The script prints the exact retry
+  command; do not run it again and bump the version twice. For the manual path:
+
+  ```bash
+  git push --atomic origin main "refs/tags/${release_tag}"
+  ```
+
+- If a draft or packaging job fails, inspect its logs and the existing release before retrying. Asset
+  upload can leave a partial set; the workflow does not overwrite existing assets. Do not move or
+  reuse a published tag.
 
 ## Build locally
 

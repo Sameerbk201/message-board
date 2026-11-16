@@ -1,6 +1,6 @@
 # Welcome to Message Board
 
-**Version:** 3.0.11 · **Author:** Message Board
+**Version:** See [package.json](package.json) · **Author:** Message Board
 
 Message Board shares temporary text messages and files with everyone connected to one server.
 Express serves the browser interface, and native WebSockets broadcast over the same HTTPS listener.

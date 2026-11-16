@@ -55,7 +55,7 @@
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "typecheck:all": "npm run typecheck && npm run typecheck:tests && npm run typecheck:scripts",
     "check": "npm run lint && npm run typecheck",
-    "release:backend": "tsx scripts/release.new.version.ts",
+    "release:message-board": "node --import tsx scripts/release.new.version.ts",
     "dev:infra:setup": "tsx scripts/run.setup.test.infra.ts",
     "test:infra:setup": "tsx scripts/run.setup.test.infra.ts",
     "test:infra:reset": "tsx scripts/run.setup.test.infra.ts"
