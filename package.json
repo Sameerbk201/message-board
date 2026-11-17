@@ -1,6 +1,6 @@
 {
   "name": "message-board",
-  "version": "3.0.12",
+  "version": "3.0.13",
   "description": "Message Board backend",
   "private": true,
   "type": "module",
