@@ -97,7 +97,18 @@ still determine whether another device can reach it.
 | Page and socket path   | `/api/message-board`, using HTTPS GET or a WSS upgrade.                                |
 | Incoming message limit | `64 * 1024` bytes of UTF-8 text.                                                       |
 
-For a different port in a POSIX shell:
+Pass a port as the first argument:
+
+```bash
+npm run dev -- 9999
+# Or after building:
+npm start -- 9999
+```
+
+The command-line argument takes priority over `PORT`. If omitted, the server uses `PORT`,
+then defaults to `8887`. Port values must be integers from `0` through `65535`.
+
+The environment variable also remains available in a POSIX shell:
 
 ```bash
 PORT=9999 npm run dev

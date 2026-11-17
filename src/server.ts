@@ -205,7 +205,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 const entrypoint = process.argv[1];
 if (isSea() || (entrypoint !== undefined && import.meta.url === pathToFileURL(entrypoint).href)) {
-  void startServer().then(
+  const portArgument = process.argv[2];
+  void startServer(portArgument === undefined ? {} : { port: Number(portArgument) }).then(
     (instance) => {
       const shutdown = (): void => {
         void instance.stop().catch((error: unknown) => {

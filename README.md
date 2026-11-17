@@ -64,6 +64,15 @@ Messages and files stay in connected browsers; the server keeps no history or fi
    The first start creates a self-signed certificate in `~/.message-board/tls/`; your browser must
    trust it. Keep the terminal open while using the board, and press **Ctrl+C** to stop the server.
 
+To choose a different port, pass it as the first argument:
+
+```bash
+./message-board/message-board 9999
+```
+
+The argument overrides the `PORT` environment variable. Without either, the port is `8887`.
+For the example above, open `https://localhost:9999/api/message-board`.
+
 The executables do not have a publisher signature. The macOS executable is ad hoc signed and is not
 notarized. If the latest release has no ZIPs yet, its platform builds may still be running.
 

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -234,6 +235,35 @@ describe('Message Board server', () => {
     await expect(startServer({ port })).rejects.toThrow(
       'PORT must be an integer between 0 and 65535'
     );
+  });
+
+  it('uses the command-line port before PORT', () => {
+    const address = instance.httpServer.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected the HTTP server to have a TCP address.');
+    }
+
+    const result = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', join(process.cwd(), 'src', 'server.ts'), String(address.port)],
+      { env: { ...process.env, PORT: 'invalid' }, encoding: 'utf8', timeout: 10000 }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('EADDRINUSE');
+  });
+
+  it.each(['invalid', '-1', '1.5', '65536'])('rejects invalid command-line port %s', (port) => {
+    const result = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', join(process.cwd(), 'src', 'server.ts'), port],
+      { env: { ...process.env, PORT: 'invalid' }, encoding: 'utf8', timeout: 10000 }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('PORT must be an integer between 0 and 65535');
   });
 
   it('cleans up a failed startup without disturbing the existing server', async () => {
